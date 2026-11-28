@@ -1372,7 +1372,7 @@ function LudoApp() {
     setUserRole(amIHost ? 'player' : role);
 
     setTableSeats({
-      blue:
+      red:
         amIHost
           ? {
               id: resolvedHostId,
@@ -1384,7 +1384,7 @@ function LudoApp() {
             }
           : null,
       green: null,
-      red: null,
+      blue: null,
       yellow: null,
     });
     setGameStarted(true);
@@ -1434,9 +1434,9 @@ function LudoApp() {
     setRoomDeputyId(null);
 
     setTableSeats({
-      blue: role === 'player' ? { id: myId, name: userProfile.username, avatar: userProfile.avatar_url || '/laugh_emote.png', isBot: false, isHost: true, isDeputy: false } : null,
+      red: role === 'player' ? { id: myId, name: userProfile.username, avatar: userProfile.avatar_url || '/laugh_emote.png', isBot: false, isHost: true, isDeputy: false } : null,
       green: null,
-      red: null,
+      blue: null,
       yellow: null,
     });
     setGameStarted(true);
