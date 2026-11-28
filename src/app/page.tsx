@@ -119,7 +119,7 @@ function LudoApp() {
   const [gameStarted, setGameStarted] = useState<boolean>(false); // Inside room screen vs Lobby
   const [matchActive, setMatchActive] = useState<boolean>(false); // Active Ludo match inside the open room
   const [myOwnerRoom, setMyOwnerRoom] = useState<PersistentOwnerRoom | null>(null);
-  const [showCinematicIntro, setShowCinematicIntro] = useState<boolean>(true);
+  const [showCinematicIntro, setShowCinematicIntro] = useState<boolean>(() => !queryAutoStart);
   const [showRoomSettingsModal, setShowRoomSettingsModal] = useState<boolean>(false);
   const [editRoomName, setEditRoomName] = useState<string>('');
   const [editWallpaperId, setEditWallpaperId] = useState<string>('royal_gold');
