@@ -2575,8 +2575,8 @@ function LudoApp() {
       const allSamePosition = validMoves.length > 0 && validMoves.every(t => t.position === validMoves[0].position);
 
       if (validMoves.length === 0) {
+        setRollingDicePlayer(null);
         setTimeout(() => {
-          setRollingDicePlayer(null);
           const newExtraRolls = extraRolls + (finalVal === 6 ? 1 : 0);
           if (newExtraRolls > 0) {
             setExtraRolls(newExtraRolls - 1);
