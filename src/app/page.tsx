@@ -31,6 +31,9 @@ import {
   LUDO_PUBLIC_ROOMS,
   PublicLudoRoom,
   BOARD_SKINS,
+  ROOM_WALLPAPERS,
+  getRoomWallpaper,
+  RoomWallpaper,
 } from './ludoConstants';
 import { MythicSplashScreenIntro } from './ludoSplashIntro';
 import {
@@ -117,6 +120,13 @@ function LudoApp() {
   const [matchActive, setMatchActive] = useState<boolean>(false); // Active Ludo match inside the open room
   const [myOwnerRoom, setMyOwnerRoom] = useState<PersistentOwnerRoom | null>(null);
   const [showCinematicIntro, setShowCinematicIntro] = useState<boolean>(true);
+  const [showRoomSettingsModal, setShowRoomSettingsModal] = useState<boolean>(false);
+  const [editRoomName, setEditRoomName] = useState<string>('');
+  const [editWallpaperId, setEditWallpaperId] = useState<string>('royal_gold');
+  const [editAnnouncement, setEditAnnouncement] = useState<string>('');
+  const [editStake, setEditStake] = useState<number>(50);
+  const [editMaxPlayers, setEditMaxPlayers] = useState<number>(4);
+  const [editIsOpen, setEditIsOpen] = useState<boolean>(true);
   const [selectedBoardSkin, setSelectedBoardSkin] = useState<BoardTheme>(() => {
     if (querySkin && ['classic', 'space', 'underwater', 'ancient'].includes(querySkin)) {
       return querySkin;
@@ -147,6 +157,58 @@ function LudoApp() {
         winRule,
       });
     }
+  };
+
+  const openRoomSettings = (room?: PublicLudoRoom) => {
+    const target = room || (myOwnerRoom ? {
+      nameAr: myOwnerRoom.name,
+      backgroundId: myOwnerRoom.backgroundId,
+      announcement: myOwnerRoom.announcement,
+      entryFee: myOwnerRoom.stake,
+      playerCount: (myOwnerRoom.maxPlayers as 2 | 4) || 4,
+      isOpen: myOwnerRoom.isOpen,
+    } : null);
+    setEditRoomName(target?.nameAr || (lang === 'ar' ? `غرفة ${userProfile?.username || 'المحارب'} 👑` : `${userProfile?.username || 'Warrior'}'s Room 👑`));
+    setEditWallpaperId(target?.backgroundId || selectedBoardSkin || 'royal_gold');
+    setEditAnnouncement(target?.announcement || (lang === 'ar' ? 'أهلاً بكم في مجلسنا المتواضع.. متعة اللعب والدردشة بالمايك! 🎙️👑' : 'Welcome to our room! Enjoy voice banter & ludo 🎙️👑'));
+    setEditStake(target?.entryFee || roomStake || 50);
+    setEditMaxPlayers(target?.playerCount || playerCount);
+    setEditIsOpen(target?.isOpen !== false);
+    setShowRoomSettingsModal(true);
+  };
+
+  const handleSaveRoomSettings = () => {
+    const myId = userProfile?.id || '12842582';
+    const persistentId = getOwnerRoomId(myId);
+    const existingOwner = loadOwnerRoomLocal(myId);
+    const finalName = editRoomName.trim() || (lang === 'ar' ? `غرفة ${userProfile?.username || 'المحارب'} 👑` : `${userProfile?.username || 'Warrior'}'s Room 👑`);
+
+    const updatedRoom: PersistentOwnerRoom = {
+      id: persistentId,
+      name: finalName,
+      hostId: myId,
+      hostName: userProfile?.username || 'Host',
+      hostAvatar: userProfile?.avatar || '/laugh_emote.png',
+      stake: editStake,
+      maxPlayers: editMaxPlayers,
+      isOpen: editIsOpen,
+      roomLevel: existingOwner?.roomLevel || 1,
+      roomXp: existingOwner?.roomXp || 0,
+      roomMatches: existingOwner?.roomMatches || 0,
+      bannedIds: existingOwner?.bannedIds || [],
+      backgroundId: editWallpaperId,
+      announcement: editAnnouncement,
+      updatedAt: Date.now(),
+    };
+
+    void saveRoomMetaToServer(updatedRoom);
+    setMyOwnerRoom(updatedRoom);
+    setRoomStake(editStake);
+    setPlayerCount(editMaxPlayers as 2 | 3 | 4);
+    if (['classic', 'space', 'underwater', 'ancient'].includes(editWallpaperId)) {
+      handleSelectTheme(editWallpaperId as BoardTheme);
+    }
+    setShowRoomSettingsModal(false);
   };
 
   // Drag-to-scroll refs and handlers for the Top Mic Seats bar (الاسكرول بالسحب بدون شريط رمادي)
@@ -4005,7 +4067,7 @@ function LudoApp() {
         </div>
       )}
 
-      {showCinematicIntro && (
+      {showCinematicIntro ? (
         <MythicSplashScreenIntro
           onComplete={() => {
             setShowCinematicIntro(false);
@@ -4013,22 +4075,7 @@ function LudoApp() {
           lang={lang}
           isMuted={isMuted}
         />
-      )}
-
-      {/* Floating Side Settings Button in Lobby Screens */}
-      {!gameStarted && (
-        <button
-          type="button"
-          onClick={() => setShowSettingsModal(true)}
-          className="fixed top-2 left-2 z-40 w-9 h-9 rounded-full bg-slate-900/90 hover:bg-slate-800 border-2 border-amber-400/75 text-amber-300 flex items-center justify-center text-base shadow-lg active:scale-90 transition-transform cursor-pointer"
-          title={lang === 'ar' ? 'الإعدادات والتحكم السريع ⚙️' : 'Settings & Quick Controls ⚙️'}
-        >
-          ⚙️
-        </button>
-      )}
-
-      {/* Main Content Area */}
-      {!gameStarted ? (
+      ) : !gameStarted ? (
         lobbyView !== 'create_room' ? (
           /* VIEW 1: ACTIVE ROOMS LOBBY (كروت الغرف المباشرة + زر إنشاء غرفة) */
           <div className="flex-1 flex items-center justify-center p-3 sm:p-5 relative overflow-y-auto w-full">
@@ -4050,15 +4097,27 @@ function LudoApp() {
                   </p>
                 </div>
 
-                {/* Create Room Button */}
-                <button
-                  type="button"
-                  onClick={() => setLobbyView('create_room')}
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-[0_0_25px_rgba(251,191,36,0.5)] active:scale-95 transition-all cursor-pointer flex items-center gap-2 shrink-0 border border-amber-300"
-                >
-                  <span className="text-base">➕</span>
-                  <span>{lang === 'ar' ? 'إنشاء غرفة جديدة' : 'Create New Room'}</span>
-                </button>
+                {/* Header Action Buttons: Play Intro Replay + Create Room */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCinematicIntro(true)}
+                    className="px-3 py-2 bg-slate-900/80 hover:bg-slate-800 border border-amber-400/40 hover:border-amber-400 rounded-xl text-xs font-black text-amber-300 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shadow"
+                    title={lang === 'ar' ? 'مشاهدة الدخلة الأسطورية 🎬' : 'Watch Intro 🎬'}
+                  >
+                    <span>🎬</span>
+                    <span className="hidden sm:inline">{lang === 'ar' ? 'عرض الدخلة' : 'Play Intro'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLobbyView('create_room')}
+                    className="px-5 py-2.5 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-[0_0_25px_rgba(251,191,36,0.5)] active:scale-95 transition-all cursor-pointer flex items-center gap-2 shrink-0 border border-amber-300"
+                  >
+                    <span className="text-base">➕</span>
+                    <span>{lang === 'ar' ? 'إنشاء غرفة جديدة' : 'Create New Room'}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Active Live Rooms Grid (Your Persistent Room + Live Supabase + Fallback Rooms) */}
@@ -4084,6 +4143,8 @@ function LudoApp() {
                         isOpen: myOwnerRoom.isOpen,
                         roomLevel: myOwnerRoom.roomLevel || 1,
                         bannedIds: myOwnerRoom.bannedIds || [],
+                        backgroundId: myOwnerRoom.backgroundId || 'royal_gold',
+                        announcement: myOwnerRoom.announcement || (lang === 'ar' ? 'أهلاً بكم في غرفتنا ومجلسنا.. نورتونا جميعاً! 👑🎙️' : 'Welcome to our room! 👑🎙️'),
                       }
                     : null;
 
@@ -4102,6 +4163,8 @@ function LudoApp() {
                     prizeAmount: lr.stake * (lr.maxPlayers === 2 ? 2 : 4),
                     status: lr.status,
                     modeType: lr.piecesCount === 2 ? 'blitz' : 'classic',
+                    backgroundId: lr.backgroundId || 'royal_gold',
+                    announcement: lr.announcement,
                   }));
 
                   const mergedRooms: PublicLudoRoom[] = [
@@ -4116,114 +4179,204 @@ function LudoApp() {
                     const amIOwnerCard = room.hostId === myId || room.id === getOwnerRoomId(myId);
                     const isFull = room.currentPlayers >= room.playerCount;
                     const isInGame = room.status === 'in_game';
+                    const wp = getRoomWallpaper(room.backgroundId);
+
                     return (
                       <div
                         key={room.id}
-                        className={`p-4 rounded-2xl flex flex-col justify-between gap-3 transition-all shadow-md border ${
+                        className={`rounded-3xl overflow-hidden transition-all duration-300 shadow-xl group relative border flex flex-col justify-between ${
                           amIOwnerCard
-                            ? 'bg-emerald-950/35 border-emerald-400/70 hover:border-emerald-300'
+                            ? 'bg-slate-900/90 border-amber-400/80 shadow-[0_0_30px_rgba(245,158,11,0.3)] hover:border-amber-300 ring-1 ring-amber-400/50'
                             : isInGame
-                            ? 'bg-purple-950/30 border-purple-500/50 hover:border-purple-400/80'
-                            : 'bg-slate-900/85 border-amber-500/35 hover:border-amber-400/70'
+                            ? 'bg-slate-900/90 border-purple-500/60 shadow-[0_0_25px_rgba(168,85,247,0.2)] hover:border-purple-400'
+                            : 'bg-slate-900/90 border-slate-700/80 hover:border-amber-400/70 shadow-lg'
                         }`}
                       >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <img
-                              src={room.hostAvatar}
-                              alt={room.hostName}
-                              className={`w-10 h-10 rounded-full border bg-slate-900 object-cover ${
-                                amIOwnerCard ? 'border-emerald-400/70' : isInGame ? 'border-purple-400/50' : 'border-amber-400/50'
+                        {/* 1. Game Themed Header Banner (خلفية اللعبة وثيم الروم) */}
+                        <div className="relative h-20 sm:h-22 w-full overflow-hidden bg-slate-950 flex items-start justify-between p-3">
+                          <img
+                            src={wp.image}
+                            alt={wp.nameAr}
+                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                          <div className={`absolute inset-0 bg-gradient-to-b ${wp.themeGradient} opacity-85`} />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-black/40" />
+
+                          {/* Top-Right: Game Category Tag */}
+                          <div className="relative z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/20 text-[10px] font-black text-amber-300 shadow">
+                            <span>{wp.icon}</span>
+                            <span>{wp.tagAr}</span>
+                          </div>
+
+                          {/* Top-Left: Status & Settings Button */}
+                          <div className="relative z-10 flex items-center gap-1.5">
+                            {amIOwnerCard && (
+                              <button
+                                type="button"
+                                onClick={() => openRoomSettings(room)}
+                                className="px-2 py-1 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-slate-950 font-black text-[10px] flex items-center gap-1 shadow-md cursor-pointer transition-all active:scale-95"
+                                title="اضغط لتغيير خلفية وإعدادات الروم"
+                              >
+                                <span>⚙️</span>
+                                <span>{lang === 'ar' ? 'الخلفيات' : 'Wallpaper'}</span>
+                              </button>
+                            )}
+
+                            <span
+                              className={`text-[10px] font-black px-2.5 py-1 rounded-full border backdrop-blur-md flex items-center gap-1 ${
+                                isInGame
+                                  ? 'bg-purple-950/80 border-purple-400/60 text-purple-200 animate-pulse'
+                                  : 'bg-emerald-950/80 border-emerald-400/60 text-emerald-200'
                               }`}
-                            />
-                            <div>
-                              <h4 className="text-xs font-black text-white flex items-center gap-1.5 flex-wrap">
-                                <span>{lang === 'ar' ? room.nameAr : room.nameEn}</span>
-                                <span>{room.flag}</span>
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${isInGame ? 'bg-purple-400 animate-ping' : 'bg-emerald-400 animate-ping'}`} />
+                              <span>{isInGame ? (lang === 'ar' ? 'المباراة جارية ⚔️' : 'Live Match') : (lang === 'ar' ? 'في انتظار لاعبين' : 'Waiting')}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 2. Host Profile Section (صورة البروفايل اللى اختاره اللاعب) */}
+                        <div className="px-4 pt-1 pb-3 space-y-3 relative z-10">
+                          <div className="flex items-center gap-3">
+                            {/* Host Avatar with Golden VIP Ring */}
+                            <div
+                              onClick={() => {
+                                if (amIOwnerCard) openRoomSettings(room);
+                              }}
+                              className={`relative cursor-pointer transition-transform group-hover:scale-105 ${
+                                amIOwnerCard ? 'ring-2 ring-amber-400 rounded-full' : ''
+                              }`}
+                              title={amIOwnerCard ? 'اضغط لتغيير خلفيات وإعدادات الروم 🎨' : room.hostName}
+                            >
+                              <div className="w-13 h-13 rounded-full p-0.5 bg-gradient-to-tr from-amber-500 via-yellow-300 to-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.5)]">
+                                <img
+                                  src={room.hostAvatar}
+                                  alt={room.hostName}
+                                  className="w-full h-full rounded-full object-cover bg-slate-950 border border-slate-900"
+                                />
+                              </div>
+                              <span className="absolute -bottom-1 -right-1 text-xs filter drop-shadow">
+                                {room.flag}
+                              </span>
+                              {amIOwnerCard && (
+                                <span className="absolute -top-1 -left-1 bg-amber-500 text-slate-950 text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow">
+                                  👑
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Host Name, Room Title & Level */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h3 className="text-xs sm:text-sm font-black text-white truncate">
+                                  {lang === 'ar' ? room.nameAr : room.nameEn}
+                                </h3>
                                 {amIOwnerCard && (
-                                  <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-black text-[9px] border border-emerald-400/40">
+                                  <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-black text-[9px] border border-amber-400/40">
                                     👑 {lang === 'ar' ? 'غرفتك الدائمة' : 'Your Room'}
                                   </span>
                                 )}
-                              </h4>
-                              <p className="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap">
-                                <span>{lang === 'ar' ? 'المضيف:' : 'Host:'} {room.hostName}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                <span className="font-bold text-amber-200">
+                                  {lang === 'ar' ? `المضيف: ${room.hostName}` : `Host: ${room.hostName}`}
+                                </span>
                                 {room.roomLevel && (
-                                  <span className="px-1.5 rounded bg-amber-500/15 text-amber-300 font-black text-[9px] border border-amber-400/30">
+                                  <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 font-black text-[9px] border border-amber-400/30">
                                     ⭐ Lv.{room.roomLevel}
                                   </span>
                                 )}
                                 {room.isOpen === false && (
-                                  <span className="px-1.5 rounded bg-rose-500/20 text-rose-300 font-black text-[9px] border border-rose-400/40">
-                                    🔒 {lang === 'ar' ? 'مقفلة مؤقتاً' : 'Locked'}
+                                  <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-black text-[9px] border border-rose-400/40">
+                                    🔒 مقفلة مؤقتاً
                                   </span>
                                 )}
-                              </p>
+                              </div>
                             </div>
                           </div>
-                          <span
-                            className={`text-[9px] font-black px-2 py-0.5 rounded-full border shrink-0 ${
-                              isInGame
-                                ? 'bg-purple-500/15 border-purple-400/40 text-purple-300'
-                                : 'bg-amber-500/15 border-amber-400/40 text-amber-300'
-                            }`}
-                          >
-                            {isInGame
-                              ? (lang === 'ar' ? 'المباراة جارية 🔥' : 'In Game 🔥')
-                              : (lang === 'ar' ? 'بانتظار لاعبين ⏳' : 'Waiting ⏳')}
-                          </span>
-                        </div>
 
-                        {/* Room Stats */}
-                        <div className="grid grid-cols-3 gap-2 bg-black/40 p-2 rounded-xl text-center text-[10px]">
-                          <div>
-                            <span className="text-slate-500 block">{lang === 'ar' ? 'اللاعبين' : 'Players'}</span>
-                            <span className={`font-black ${isInGame ? 'text-purple-300' : 'text-emerald-400'}`}>
-                              {room.currentPlayers}/{room.playerCount}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 block">{lang === 'ar' ? 'المتفرجين' : 'Spectators'}</span>
-                            <span className="font-black text-amber-300">
-                              🎙️ {room.spectatorsCount}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 block">{lang === 'ar' ? 'الجائزة' : 'Prize'}</span>
-                            <span className="font-black text-yellow-400">
-                              {room.prizeAmount} 🪙
-                            </span>
-                          </div>
-                        </div>
+                          {/* Room Announcement Speech Bubble */}
+                          {room.announcement && (
+                            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl px-3 py-1.5 text-[11px] text-slate-300 flex items-center gap-1.5 line-clamp-1 italic">
+                              <span className="text-amber-400">🎙️</span>
+                              <span>&ldquo;{room.announcement}&rdquo;</span>
+                            </div>
+                          )}
 
-                        {/* Unified Single Action Button */}
-                        <div className="pt-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const isMatchPlaying = room.status === 'in_game';
-                              const roleToAssign = amIOwnerCard ? 'player' : (isMatchPlaying || isFull) ? 'spectator' : 'player';
-                              void joinRoomFromList(room, roleToAssign);
-                            }}
-                            className={`w-full py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer shadow active:scale-98 ${
-                              amIOwnerCard
-                                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 border border-emerald-300 shadow-emerald-950/40'
-                                : isInGame || isFull
-                                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white border border-purple-400/50 shadow-purple-950/40'
-                                : 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 border border-amber-300 shadow-amber-950/40'
-                            }`}
-                          >
-                            <span>{amIOwnerCard ? '👑' : isInGame || isFull ? '🎙️' : '🚪'}</span>
-                            <span>
-                              {amIOwnerCard
-                                ? (lang === 'ar' ? `ادخل غرفتك الآن (أنت المالك - ${room.entryFee} 🪙)` : `Enter Your Room (Owner - ${room.entryFee} 🪙)`)
-                                : isInGame
-                                ? (lang === 'ar' ? 'دخول الغرفة (المباراة جارية - متفرج حتى الجيم الجديد)' : 'Enter Room (In Game - Spectate)')
-                                : isFull
-                                ? (lang === 'ar' ? 'دخول الغرفة (المقاعد ممتلئة - متفرج)' : 'Enter Room (Seats Full - Spectate)')
-                                : (lang === 'ar' ? `دخول الغرفة (الرهان: ${room.entryFee} 🪙)` : `Enter Room (${room.entryFee} 🪙)`)}
-                            </span>
-                          </button>
+                          {/* 3. Visual Game Table & Seats (مقاعد اللعب المرئية والمتفرجين) */}
+                          <div className="bg-slate-950/60 p-2.5 rounded-2xl border border-slate-800/70 flex items-center justify-between gap-2">
+                            {/* Visual Seats representation */}
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-400 font-bold ml-1">
+                                {lang === 'ar' ? 'طاولة النرد:' : 'Table:'}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: room.playerCount }).map((_, seatIdx) => {
+                                  const isOccupied = seatIdx < room.currentPlayers;
+                                  const seatColors = ['text-emerald-400', 'text-sky-400', 'text-amber-400', 'text-rose-400'];
+                                  return (
+                                    <div
+                                      key={seatIdx}
+                                      className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] border transition-all ${
+                                        isOccupied
+                                          ? `bg-slate-900 border-amber-400/70 shadow-sm ${seatColors[seatIdx % 4]}`
+                                          : 'bg-slate-950/80 border-dashed border-slate-700 text-slate-600'
+                                      }`}
+                                      title={isOccupied ? `لاعب ${seatIdx + 1}` : 'مقعد شاغر'}
+                                    >
+                                      {isOccupied ? '🎲' : '+'}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <span className={`text-[11px] font-bold mr-1 ${isInGame ? 'text-purple-300' : isFull ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                {room.currentPlayers}/{room.playerCount}
+                              </span>
+                            </div>
+
+                            {/* Voice Spectators Count */}
+                            <div className="flex items-center gap-1 text-[11px] font-bold text-cyan-300 bg-cyan-950/40 px-2 py-1 rounded-xl border border-cyan-800/40">
+                              <span>🎙️</span>
+                              <span>{room.spectatorsCount + (room.currentPlayers > 1 ? room.currentPlayers : 1)}</span>
+                              <span className="text-[9px] text-slate-400 hidden sm:inline">{lang === 'ar' ? 'متفرج' : 'watching'}</span>
+                            </div>
+
+                            {/* Stake & Prize Info */}
+                            <div className="text-right">
+                              <div className="text-[9px] text-slate-400">{lang === 'ar' ? 'رسوم الدخول' : 'Entry'}</div>
+                              <div className="font-black text-amber-300 text-xs">🪙 {room.entryFee}</div>
+                            </div>
+                          </div>
+
+                          {/* 4. Action Button */}
+                          <div className="pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const isMatchPlaying = room.status === 'in_game';
+                                const roleToAssign = amIOwnerCard ? 'player' : (isMatchPlaying || isFull) ? 'spectator' : 'player';
+                                void joinRoomFromList(room, roleToAssign);
+                              }}
+                              className={`w-full py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-98 ${
+                                amIOwnerCard
+                                  ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-slate-950 border border-amber-200 shadow-amber-950/50'
+                                  : isInGame || isFull
+                                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white border border-purple-400/50 shadow-purple-950/40'
+                                  : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 border border-emerald-300 shadow-emerald-950/40'
+                              }`}
+                            >
+                              <span>{amIOwnerCard ? '👑' : isInGame || isFull ? '🎙️' : '🚪'}</span>
+                              <span>
+                                {amIOwnerCard
+                                  ? (lang === 'ar' ? `ادخل غرفتك الآن (أنت المالك - ${room.entryFee} 🪙)` : `Enter Your Room (Owner - ${room.entryFee} 🪙)`)
+                                  : isInGame
+                                  ? (lang === 'ar' ? 'دخول الغرفة (المباراة جارية - استمع بالمايك 🎙️)' : 'Enter Room (In Game - Spectate)')
+                                  : isFull
+                                  ? (lang === 'ar' ? 'دخول الغرفة (طاولة اللعب ممتلئة - استمع بالمايك 🎙️)' : 'Enter Room (Seats Full - Spectate)')
+                                  : (lang === 'ar' ? `دخول الغرفة للعب (الرهان: ${room.entryFee} 🪙)` : `Enter Room To Play (${room.entryFee} 🪙)`)}
+                              </span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -4759,9 +4912,22 @@ function LudoApp() {
                         : (lang === 'ar' ? 'الغرفة مفتوحة — اختر مكانك للعب أو تابع على المايك' : 'Room open — pick a seat to play or spectate')}
                     </p>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[9px] font-black shrink-0">
-                    ⭐ Lv.{calculateRoomLevel(roomXp).level}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {canAccessSettings && (
+                      <button
+                        type="button"
+                        onClick={() => openRoomSettings()}
+                        className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-300 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-all"
+                        title={lang === 'ar' ? 'تخصيص ثيم وخلفية الروم' : 'Customize Room Wallpaper'}
+                      >
+                        <span>⚙️</span>
+                        <span>{lang === 'ar' ? 'إعدادات وخلفية الروم' : 'Room Wallpaper'}</span>
+                      </button>
+                    )}
+                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[9px] font-black">
+                      ⭐ Lv.{calculateRoomLevel(roomXp).level}
+                    </span>
+                  </div>
                 </div>
 
                 {/* 1. Board Skin / Shape Selector */}
@@ -5745,6 +5911,229 @@ function LudoApp() {
         onLeaveMatchOnly={handleEndMatchStayInRoom}
         onConfirm={confirmExitGame}
       />
+
+      {/* Room Settings & Wallpaper Modal */}
+      {showRoomSettingsModal && (
+        <div
+          dir={lang === 'ar' ? 'rtl' : 'ltr'}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn"
+          onClick={() => setShowRoomSettingsModal(false)}
+        >
+          <div
+            className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto no-scrollbar rounded-3xl bg-gradient-to-b from-slate-900 via-slate-950 to-black border-2 border-amber-500/60 shadow-[0_0_50px_rgba(245,158,11,0.25)] p-4 sm:p-6 text-white space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-amber-500/20 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-yellow-400 flex items-center justify-center text-slate-950 text-xl shadow-lg ring-2 ring-amber-300/50">
+                  ⚙️
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-amber-300 flex items-center gap-1.5">
+                    <span>{lang === 'ar' ? 'إعدادات وخلفيات الروم' : 'Room Settings & Wallpapers'}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40">VIP</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    {lang === 'ar' ? 'غيّر ثيم الغرفة وخلفيتها مثل رومات الدردشة، وخصص الاسم والرهان' : 'Customize room wallpaper, theme, title & match stakes'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRoomSettingsModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-sm transition-all cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Wallpapers Carousel / Grid */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-amber-200">
+                <span className="flex items-center gap-1.5">
+                  <span>🎨</span>
+                  <span>{lang === 'ar' ? 'خلفيات وثيمات الغرفة (8 ثيمات حصرية):' : 'Room Wallpapers & Themes (8 Exclusive):'}</span>
+                </span>
+                <span className="text-[10px] text-emerald-400 font-normal">
+                  {lang === 'ar' ? 'مجاناً للمضيف' : 'Free for Room Host'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto no-scrollbar p-1">
+                {ROOM_WALLPAPERS.map((wp) => {
+                  const isSelected = editWallpaperId === wp.id;
+                  return (
+                    <button
+                      key={wp.id}
+                      type="button"
+                      onClick={() => setEditWallpaperId(wp.id)}
+                      className={`relative group rounded-2xl overflow-hidden border-2 text-right transition-all flex flex-col justify-between p-2 h-28 cursor-pointer ${
+                        isSelected
+                          ? `${wp.borderGlow} scale-[1.03] ring-2 ring-white/60`
+                          : 'border-slate-800 hover:border-slate-600 bg-slate-900/60 opacity-80 hover:opacity-100'
+                      }`}
+                      style={{
+                        backgroundImage: `linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.3)), url(${wp.image})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                      }}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-lg drop-shadow">{wp.icon}</span>
+                        {isSelected && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 text-[9px] font-black shadow-md flex items-center gap-0.5">
+                            ✓ {lang === 'ar' ? 'المحدد' : 'Active'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="w-full">
+                        <div className="text-[10px] font-black text-white leading-tight drop-shadow truncate">
+                          {lang === 'ar' ? wp.nameAr : wp.nameEn}
+                        </div>
+                        <span className="text-[8px] px-1 py-0.5 rounded bg-black/60 text-amber-300 font-bold inline-block mt-0.5">
+                          {lang === 'ar' ? wp.tagAr : wp.tagEn}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Selected wallpaper description */}
+              {(() => {
+                const selected = getRoomWallpaper(editWallpaperId);
+                return (
+                  <div className={`p-2.5 rounded-xl border bg-gradient-to-r ${selected.themeGradient} border-amber-500/40 text-[11px] text-slate-200 flex items-center gap-2`}>
+                    <span className="text-xl shrink-0">{selected.icon}</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-amber-300">{lang === 'ar' ? selected.nameAr : selected.nameEn}</div>
+                      <div className="text-[10px] text-slate-300 truncate">{lang === 'ar' ? selected.descAr : selected.descEn}</div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Room Title */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <span>🏷️</span>
+                <span>{lang === 'ar' ? 'اسم الغرفة:' : 'Room Title:'}</span>
+              </label>
+              <input
+                type="text"
+                maxLength={40}
+                value={editRoomName}
+                onChange={(e) => setEditRoomName(e.target.value)}
+                placeholder={lang === 'ar' ? 'مثال: قاعة الملوك الكبرى 👑' : 'e.g. Royal Kings Arena 👑'}
+                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-sm text-white placeholder-slate-500 outline-none transition-all"
+              />
+            </div>
+
+            {/* Announcement / Welcome Note */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <span>📢</span>
+                <span>{lang === 'ar' ? 'رسالة الترحيب / الإعلان المثبت في الروم:' : 'Welcome Message / Room Announcement:'}</span>
+              </label>
+              <textarea
+                rows={2}
+                maxLength={100}
+                value={editAnnouncement}
+                onChange={(e) => setEditAnnouncement(e.target.value)}
+                placeholder={lang === 'ar' ? 'اكتب رسالة ترحيبية تظهر لزوار الغرفة...' : 'Write a welcome message for room visitors...'}
+                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-xs text-white placeholder-slate-500 outline-none resize-none transition-all"
+              />
+            </div>
+
+            {/* Stake & Players Selection */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Stake */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                  <span>🪙</span>
+                  <span>{lang === 'ar' ? 'رهان الدخول:' : 'Entry Stake:'}</span>
+                </label>
+                <div className="grid grid-cols-3 gap-1">
+                  {[50, 100, 250, 500, 1000, 2000].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setEditStake(s)}
+                      className={`py-1 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                        editStake === s
+                          ? 'bg-amber-500 border-amber-300 text-slate-950 shadow-md'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {s >= 1000 ? `${s / 1000}K` : s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Max Players & Access */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                  <span>👥</span>
+                  <span>{lang === 'ar' ? 'طاولة اللعب:' : 'Table Size:'}</span>
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setEditMaxPlayers(2)}
+                    className={`py-1.5 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                      editMaxPlayers === 2
+                        ? 'bg-cyan-500 border-cyan-300 text-slate-950 shadow-md'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    2 {lang === 'ar' ? 'لاعبين' : 'Players'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditMaxPlayers(4)}
+                    className={`py-1.5 rounded-lg text-xs font-black border transition-all cursor-pointer ${
+                      editMaxPlayers === 4
+                        ? 'bg-emerald-500 border-emerald-300 text-slate-950 shadow-md'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    4 {lang === 'ar' ? 'لاعبين' : 'Players'}
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 pt-1 text-[11px] text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editIsOpen}
+                    onChange={(e) => setEditIsOpen(e.target.checked)}
+                    className="accent-amber-500 rounded"
+                  />
+                  <span>{lang === 'ar' ? 'غرفة عامة ظاهرة في القائمة' : 'Public Room visible in lobby'}</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="pt-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSaveRoomSettings}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
+              >
+                <span>💾</span>
+                <span>{lang === 'ar' ? 'حفظ وتطبيق الثيم' : 'Save & Apply Theme'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRoomSettingsModal(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm transition-all cursor-pointer"
+              >
+                {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
